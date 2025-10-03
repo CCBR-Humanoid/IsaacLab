@@ -51,6 +51,14 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: bind
     source: ../tools
     target: ${DOCKER_ISAACLAB_PATH}/tools
+  # Shared playground for all users (host path configurable via HOST_SHARED_DIR, defaults to /srv/isaaclab/shared)
+  - type: bind
+    source: ${HOST_SHARED_DIR:-/srv/isaaclab/shared}
+    target: ${DOCKER_ISAACLAB_PATH}/shared
+  # Workspace overlay
+  - type: bind
+    source: ${HOME}/isaaclab_ws
+    target: ${DOCKER_ISAACLAB_PATH}/isaaclab_ws
     # The effect of these volumes is twofold:
     # 1. Prevent root-owned files from flooding the _build and logs dir
     #    on the host machine
@@ -73,6 +81,7 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
 x-default-isaac-lab-environment: &default-isaac-lab-environment
   - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
   - OMNI_KIT_ALLOW_ROOT=1
+  - ISAACLAB_SHARED_DIR=${DOCKER_ISAACLAB_PATH}/shared
 
 x-default-isaac-lab-deploy: &default-isaac-lab-deploy
   resources:
