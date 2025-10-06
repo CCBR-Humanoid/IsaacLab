@@ -44,7 +44,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
     git \
     libglib2.0-0 \
     ncurses-term \
-    wget && \
+    wget \
+    iproute2 && \
     apt -y autoremove && apt clean autoclean && \
     rm -rf /var/lib/apt/lists/*
 

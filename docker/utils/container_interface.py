@@ -144,7 +144,9 @@ class ContainerInterface:
             + self.add_yamls
             + self.add_profiles
             + self.add_env_files
-            + ["up", "--detach", "--build", "--remove-orphans"],
+            # TODO: Deal with this
+            #+ ["up", "--detach", "--build", "--remove-orphans"],
+            + ["up", "--detach", "--remove-orphans"],
             check=False,
             cwd=self.context_dir,
             env=self.environ,
