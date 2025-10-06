@@ -110,3 +110,17 @@ RUN echo "export ISAACLAB_PATH=${ISAACLAB_PATH}" >> ${HOME}/.bashrc && \
 # make working directory as the Isaac Lab directory
 # this is the default directory when the container is run
 WORKDIR ${ISAACLAB_PATH}
+
+RUN printf '%s\n' \
+'# Auto-export PUBLIC_IP for interactive shells' \
+'export PUBLIC_IP=$(hostname -I 2>/dev/null | tr " " "\n" | awk '\''/^100\./{print; exit}'\'')' \
+> /etc/profile.d/public_ip.sh
+
+# 2) Make sure common interactive shells source it
+# bash (system-wide)
+RUN [ -f /etc/bash.bashrc ] && echo '. /etc/profile.d/public_ip.sh' >> /etc/bash.bashrc || true
+# root’s personal bashrc (helps on images without /etc/bash.bashrc)
+RUN echo '. /etc/profile.d/public_ip.sh' >> /root/.bashrc
+
+# zsh (if you use it)
+RUN [ -d /etc/zsh ] && echo '. /etc/profile.d/public_ip.sh' >> /etc/zsh/zshrc || true

@@ -117,76 +117,6 @@ x-default-isaac-lab-ros2-build: &default-isaac-lab-ros2-build
     # start from.
     - DOCKER_NAME_SUFFIX=${DOCKER_NAME_SUFFIX-}
 
-x-detect-ip-entrypoint: &detect-ip-entrypoint
-  - /bin/sh
-  - -lc
-  - |
-    set -u
-    term() { printf '[entrypoint] Caught signal, stopping...\n'; exit 0; }
-    trap term INT TERM
-
-    ip_cmd() {
-      if command -v /sbin/ip >/dev/null 2>&1; then echo /sbin/ip; return; fi
-      if command -v ip >/dev/null 2>&1; then echo ip; return; fi
-      echo ""
-    }
-
-    get_tail_ip() {
-      IPCMD="$(ip_cmd)"
-      if [ -n "$IPCMD" ]; then
-        # exact iface query
-        ADDR="$($IPCMD -4 -o addr show dev tailscale0 2>/dev/null | awk '{print $4}' | cut -d/ -f1)" || true
-        [ -n "$ADDR" ] && { printf '%s\n' "$ADDR"; return 0; }
-      fi
-      # fallback: first 100.x from all addrs
-      ADDR="$(hostname -I 2>/dev/null | tr ' ' '\n' | awk '/^100\\./{print; exit}')" || true
-      [ -n "$ADDR" ] && printf '%s\n' "$ADDR" || return 1
-    }
-
-    printf '[entrypoint] Waiting for Tailscale IPv4 on tailscale0…\n'
-    backoff=1; cap=10; attempts=0
-    PUB=""
-    while :; do
-      PUB="$(get_tail_ip || true)"
-      if [ -n "$PUB" ]; then
-        printf '[entrypoint] Found Tailscale IPv4: %s\n' "$PUB"
-        break
-      fi
-      attempts=$((attempts+1))
-      printf '[entrypoint] Not ready (attempt %s). Retrying in %ss…\n' "$attempts" "$backoff"
-      sleep "$backoff"
-      backoff=$(( backoff*2 )); [ "$backoff" -gt "$cap" ] && backoff="$cap"
-      if [ $((attempts % 5)) -eq 0 ]; then
-        printf '[entrypoint] Debug: ip addr (if available):\n'
-        IPCMD="$(ip_cmd)"; [ -n "$IPCMD" ] && $IPCMD -4 addr show 2>/dev/null | sed 's/^/[entrypoint]   /'
-        ls -l /sys/class/net/tailscale0 2>/dev/null | sed 's/^/[entrypoint]   /' || true
-      fi
-    done
-
-    # persist and export
-    mkdir -p /run
-    printf '%s\n' "$PUB" > /run/public_ip
-    export PUBLIC_IP="$PUB"
-    : "${LIVESTREAM:=2}"; : "${ENABLE_CAMERAS:=1}"
-    printf '[entrypoint] PUBLIC_IP=%s ; LIVESTREAM=%s ; ENABLE_CAMERAS=%s\n' "$PUBLIC_IP" "$LIVESTREAM" "$ENABLE_CAMERAS"
-
-    # make all future shells auto-load it
-    cat >/etc/profile.d/public_ip.sh <<'EOF'
-    if [ -r /run/public_ip ]; then
-      export PUBLIC_IP="$(cat /run/public_ip 2>/dev/null)"
-    fi
-    EOF
-    chmod 644 /etc/profile.d/public_ip.sh
-    for rc in /etc/profile /etc/bash.bashrc /root/.bashrc; do
-      [ -e "$rc" ] || touch "$rc"
-      grep -q 'profile.d/public_ip.sh' "$rc" || echo '. /etc/profile.d/public_ip.sh' >> "$rc"
-    done
-    if grep -q '^PUBLIC_IP=' /etc/environment 2>/dev/null; then
-      sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=${PUBLIC_IP}|" /etc/environment
-    else
-      echo "PUBLIC_IP=${PUBLIC_IP}" >> /etc/environment
-    fi
-
 x-default-isaac-lab-base: &default-isaac-lab-base
   image: isaac-lab-base${DOCKER_NAME_SUFFIX-}
   container_name: isaac-lab-${SESSION_ID}
@@ -219,19 +149,26 @@ services:
     depends_on:
       tailscale:
         condition: service_healthy
-    entrypoint: *detect-ip-entrypoint
+    #entrypoint: *detect-ip-entrypoint
     environment:
       <<: [*default-isaac-lab-environment, *default-webrtc-environment]
     runtime: nvidia
     #ports:
     #  - "${WEBRTC_TCP_PORT}:${WEBRTC_TCP_PORT}/tcp"
     #  - "${WEBRTC_UDP_PORT}:${WEBRTC_UDP_PORT}/udp"
-    healthcheck:
-      test: ["CMD-SHELL", "ss -lnt 'sport = :49100' | grep -q LISTEN"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 30s
+    #healthcheck:
+    #  test: ["CMD-SHELL", "ss -lnt 'sport = :49100' | grep -q LISTEN"]
+    #  interval: 5s
+    #  timeout: 3s
+    #  retries: 30
+    #  start_period: 30s
+    #volumes:
+    #  - ./scripts/public_ip.sh:/etc/profile.d/public_ip.sh:ro
+    #entrypoint: ["/bin/sh","-lc",
+    #  "for rc in /etc/profile /etc/bash.bashrc /root/.bashrc; do \
+    #     [ -e \"$rc\" ] || :; \
+    #     grep -q 'isaac_public_ip.sh' \"$rc\" 2>/dev/null || echo '. /etc/profile.d/isaac_public_ip.sh' >> \"$rc\"; \
+    #   done;" ]
 
   # This service adds a ROS2 Humble
   # installation on top of the base image

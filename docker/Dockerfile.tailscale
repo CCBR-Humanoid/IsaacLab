@@ -1,4 +1,4 @@
 # Dockerfile
 FROM tailscale/tailscale:latest
-COPY tailscale_entrypoint.sh /tailscale_entrypoint.sh
+COPY scripts/tailscale_entrypoint.sh /tailscale_entrypoint.sh
 ENTRYPOINT ["/tailscale_entrypoint.sh"]
