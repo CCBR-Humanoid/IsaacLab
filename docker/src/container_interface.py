@@ -307,6 +307,28 @@ class ContainerInterface:
                     self.statefile.delete_section("X11")
                 except Exception:
                     pass
+
+            # Explicitly remove leftover non-persistent per-session volumes, if any.
+            # These are created with the COMPOSE_PROJECT_NAME prefix, e.g.,
+            #   <project>_isaac-logs, <project>_isaac-carb-logs, <project>_isaac-data, etc.
+            sid = self.environ.get("SESSION_ID") or self.project_name or ""
+            if sid:
+                try:
+                    vol_list = subprocess.check_output(["docker", "volume", "ls", "--format", "{{.Name}}"], text=True)
+                    candidates = [
+                        f"{sid}_isaac-carb-logs",
+                        f"{sid}_isaac-data",
+                        f"{sid}_isaac-docs",
+                        f"{sid}_isaac-lab-data",
+                        f"{sid}_isaac-lab-docs",
+                        f"{sid}_isaac-lab-logs",
+                        f"{sid}_isaac-logs",
+                    ]
+                    to_remove = [v for v in candidates if v in vol_list.splitlines()]
+                    for v in to_remove:
+                        subprocess.run(["docker", "volume", "rm", "-f", v], check=False)
+                except Exception:
+                    pass
         else:
             raise RuntimeError(f"Can't stop container '{self.container_name}' as it is not running.")
 

@@ -24,6 +24,16 @@
             "windows": {
                 "command": "${workspaceFolder}/isaaclab.bat --format"
             }
+        },
+        {
+            // run docker runner.py
+            "label": "run_docker_runner",
+            "type": "shell",
+            "command": "/bin/python3 ${workspaceFolder}/docker/runner.py",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
         }
     ]
 }

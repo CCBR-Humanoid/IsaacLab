@@ -229,6 +229,23 @@ def main():
         row = choose_running_session(ci)
         if not row:
             return
+        # Confirm with the user before stopping the selected session
+        try:
+            from src.utils import select_option, option
+            label = row.get("nickname") or "(no name)"
+            desc = f"{row['name']}    {(row.get('gui') or row.get('profile') or '')}"
+            _, confirm = select_option(
+                f"Stop session '{label}'?",
+                option("No", "Cancel and return", value=False, recommended=True),
+                option("Yes", f"Stop and remove non-persistent volumes for {desc}", value=True),
+                theme=THEME,
+            )
+            if not confirm:
+                print("[yellow]Cancelled.[/yellow]")
+                return
+        except Exception:
+            # If interactive UI is not available, default to proceeding
+            pass
         if row.get("profile"):
             ci.profile = row["profile"]
         if row.get("session_id"):
