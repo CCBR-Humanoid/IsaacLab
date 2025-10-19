@@ -241,15 +241,20 @@ class ContainerInterface:
                     x11_refresh(self.statefile)
                 except Exception:
                     pass
-            subprocess.run([
+            # Build docker exec env pass-through
+            exec_cmd = [
                 "docker",
                 "exec",
                 "--interactive",
                 "--tty",
-                *(["-e", f"DISPLAY={os.environ['DISPLAY']}"] if "DISPLAY" in os.environ else []),
-                f"{self.container_name}",
-                "bash",
-            ])
+            ]
+            if "DISPLAY" in os.environ:
+                exec_cmd += ["-e", f"DISPLAY={os.environ['DISPLAY']}"]
+            # If X11, propagate the in-container XAUTHORITY path to align with the compose overlay mount
+            if self.environ.get("SESSION_GUI") == "x11":
+                exec_cmd += ["-e", "XAUTHORITY=/tmp/.isaaclab-docker.xauth"]
+            exec_cmd += [f"{self.container_name}", "bash"]
+            subprocess.run(exec_cmd)
         else:
             raise RuntimeError(f"The container '{self.container_name}' is not running.")
 
@@ -292,6 +297,14 @@ class ContainerInterface:
                 self.statefile.namespace = f"X11-{self.environ.get('SESSION_ID','default')}"
                 try:
                     x11_cleanup(self.statefile)
+                except Exception:
+                    pass
+                # Remove per-session section and any legacy global X11 section
+                try:
+                    ns = self.statefile.namespace
+                    if ns:
+                        self.statefile.delete_section(ns)
+                    self.statefile.delete_section("X11")
                 except Exception:
                     pass
         else:
