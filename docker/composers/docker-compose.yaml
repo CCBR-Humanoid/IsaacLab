@@ -56,7 +56,7 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
     source: isaac-lab-data
     target: ${DOCKER_ISAACLAB_PATH}/data_storage
   - type: bind
-    source: ../../.isaac-lab/history/bash_history-${SESSION_ID}
+    source: ../.isaac-lab/history/bash_history-${SESSION_ID}
     target: ${DOCKER_USER_HOME}/.bash_history
   - type: volume
     source: isaac-cache-warp

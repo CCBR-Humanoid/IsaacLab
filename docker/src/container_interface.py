@@ -39,7 +39,7 @@ class ContainerInterface:
                 they are provided.
             statefile: An instance of the :class:`Statefile` class to manage state variables. Defaults to None, in
                 which case a new configuration object is created by reading the configuration file at the path
-                ``context_dir/.container.cfg``.
+                ``context_dir/docker/.container.cfg``.
             suffix: Optional docker image and container name suffix.  Defaults to None, in which case, the docker name
                 suffix is set to the empty string. A hyphen is inserted in between the profile and the suffix if
                 the suffix is a nonempty string.  For example, if "base" is passed to profile, and "custom" is
@@ -52,7 +52,7 @@ class ContainerInterface:
         # create a state-file if not provided
         # the state file is a manager of run-time state variables that are saved to a file
         if statefile is None:
-            self.statefile = StateFile(path=self.context_dir / ".container.cfg")
+            self.statefile = StateFile(path=self.context_dir / "docker" / ".container.cfg")
         else:
             self.statefile = statefile
 
@@ -165,7 +165,7 @@ class ContainerInterface:
         )
         # Ensure per-session bash history file exists
         sid = self.environ.get("SESSION_ID") or self.project_name or ""
-        hist_dir = self.context_dir / ".isaac-lab" / "history"
+        hist_dir = self.context_dir / "docker" / ".isaac-lab" / "history"
         hist_dir.mkdir(parents=True, exist_ok=True)
         hist_name = f"bash_history-{sid}" if sid else "bash_history"
         container_history_file = hist_dir / hist_name
@@ -305,6 +305,8 @@ class ContainerInterface:
                     if ns:
                         self.statefile.delete_section(ns)
                     self.statefile.delete_section("X11")
+                    # Persist the cleanup immediately
+                    self.statefile.save()
                 except Exception:
                     pass
 

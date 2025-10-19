@@ -254,6 +254,11 @@ def main():
             ci.environ["SESSION_ID"] = row["session_id"]
         if row.get("nickname") is not None:
             ci.environ["SESSION_NICKNAME"] = row.get("nickname") or ""
+        # Propagate GUI/access labels so X11 cleanup triggers correctly
+        if row.get("gui"):
+            ci.environ["SESSION_GUI"] = row.get("gui")
+        if row.get("access"):
+            ci.environ["SESSION_ACCESS"] = row.get("access")
         # Re-seed compose env-files based on profile for proper interpolation
         envs = [str(root / "docker" / "envs" / ".env.base")]
         prof = (row.get("profile") or "")
