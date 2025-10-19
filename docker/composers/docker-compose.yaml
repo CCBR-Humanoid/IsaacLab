@@ -1,0 +1,274 @@
+ 
+
+x-default-isaac-lab-volumes: &default-isaac-lab-volumes
+  - type: volume
+    source: isaac-cache-kit
+    target: ${DOCKER_ISAACSIM_ROOT_PATH}/kit/cache
+  - type: volume
+    source: isaac-cache-ov
+    target: ${DOCKER_USER_HOME}/.cache/ov
+  - type: volume
+    source: isaac-cache-pip
+    target: ${DOCKER_USER_HOME}/.cache/pip
+  - type: volume
+    source: isaac-cache-gl
+    target: ${DOCKER_USER_HOME}/.cache/nvidia/GLCache
+  - type: volume
+    source: isaac-cache-compute
+    target: ${DOCKER_USER_HOME}/.nv/ComputeCache
+  - type: volume
+    source: isaac-logs
+    target: ${DOCKER_USER_HOME}/.nvidia-omniverse/logs
+  - type: volume
+    source: isaac-carb-logs
+    target: ${DOCKER_ISAACSIM_ROOT_PATH}/kit/logs/Kit/Isaac-Sim
+  - type: volume
+    source: isaac-data
+    target: ${DOCKER_USER_HOME}/.local/share/ov/data
+  - type: volume
+    source: isaac-docs
+    target: ${DOCKER_USER_HOME}/Documents
+  - type: bind
+    source: ../../source
+    target: ${DOCKER_ISAACLAB_PATH}/source
+  - type: bind
+    source: ../../scripts
+    target: ${DOCKER_ISAACLAB_PATH}/scripts
+  - type: bind
+    source: ../../docs
+    target: ${DOCKER_ISAACLAB_PATH}/docs
+  - type: bind
+    source: ../../tools
+    target: ${DOCKER_ISAACLAB_PATH}/tools
+  - type: bind
+    source: ${HOST_SHARED_DIR:-/srv/isaaclab/shared}
+    target: ${DOCKER_ISAACLAB_PATH}/shared
+  - type: bind
+    source: ${HOME}/isaaclab_ws
+    target: ${DOCKER_ISAACLAB_PATH}/isaaclab_ws
+  - type: volume
+    source: isaac-lab-docs
+    target: ${DOCKER_ISAACLAB_PATH}/docs/_build
+  - type: volume
+    source: isaac-lab-logs
+    target: ${DOCKER_ISAACLAB_PATH}/logs
+  - type: volume
+    source: isaac-lab-data
+    target: ${DOCKER_ISAACLAB_PATH}/data_storage
+  - type: bind
+    source: ../../.isaac-lab/history/bash_history-${SESSION_ID}
+    target: ${DOCKER_USER_HOME}/.bash_history
+  - type: volume
+    source: isaac-cache-warp
+    target: /root/.cache/warp
+  - type: volume
+    source: isaac-cache-exts
+    target: /isaac-sim/extscache
+  - type: volume
+    source: isaaclab-terrain-cache
+    target: /tmp/isaaclab/terrains
+
+x-default-isaac-lab-environment: &default-isaac-lab-environment
+  ISAACSIM_PATH: ${DOCKER_ISAACLAB_PATH}/_isaac_sim
+  OMNI_KIT_ALLOW_ROOT: "1"
+  ISAACLAB_SHARED_DIR: ${DOCKER_ISAACLAB_PATH}/shared
+
+x-default-webrtc-environment: &default-webrtc-environment
+  LIVESTREAM: "1"
+  ENABLE_CAMERAS: "1"
+
+x-default-isaac-lab-deploy: &default-isaac-lab-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [ gpu ]
+
+x-default-isaac-lab-base-build: &default-isaac-lab-base-build
+  # Build context is the IsaacLab repository root (two levels up from composers)
+  context: ../..
+  # Dockerfile is under docker/Dockerfiles relative to the IsaacLab root
+  dockerfile: docker/Dockerfiles/Dockerfile.base
+  args:
+    - ISAACSIM_BASE_IMAGE_ARG=${ISAACSIM_BASE_IMAGE}
+    - ISAACSIM_VERSION_ARG=${ISAACSIM_VERSION}
+    - ISAACSIM_ROOT_PATH_ARG=${DOCKER_ISAACSIM_ROOT_PATH}
+    - ISAACLAB_PATH_ARG=${DOCKER_ISAACLAB_PATH}
+    - DOCKER_USER_HOME_ARG=${DOCKER_USER_HOME}
+
+x-default-isaac-lab-ros2-build: &default-isaac-lab-ros2-build
+  context: ../..
+  dockerfile: docker/Dockerfiles/Dockerfile.ros
+  args:
+    - ROS2_APT_PACKAGE=${ROS2_APT_PACKAGE:-NONE}
+    - DOCKER_NAME_SUFFIX=${DOCKER_NAME_SUFFIX-}
+
+x-default-isaac-lab-base: &default-isaac-lab-base
+  image: isaac-lab-base${DOCKER_NAME_SUFFIX-}
+  container_name: isaac-lab-${SESSION_ID}
+  build: *default-isaac-lab-base-build
+  volumes: *default-isaac-lab-volumes
+  deploy: *default-isaac-lab-deploy
+  stdin_open: true
+  tty: true
+  labels:
+    com.crt.session_id: ${SESSION_ID}
+    com.crt.nickname: ${SESSION_NICKNAME:-}
+    com.crt.profile: base
+
+x-default-isaac-lab-ros2: &default-isaac-lab-ros2
+  image: isaac-lab-ros2${DOCKER_NAME_SUFFIX-}
+  container_name: isaac-lab-${SESSION_ID}
+  build: *default-isaac-lab-ros2-build
+  volumes: *default-isaac-lab-volumes
+  deploy: *default-isaac-lab-deploy
+  stdin_open: true
+  tty: true
+  labels:
+    com.crt.session_id: ${SESSION_ID}
+    com.crt.nickname: ${SESSION_NICKNAME:-}
+    com.crt.profile: ros2
+
+services:
+  # Base image (no GUI)
+  isaac-lab-base:
+    profiles: ["base"]
+    env_file:
+      - ../envs/.env.base
+    <<: *default-isaac-lab-base
+    environment:
+      <<: *default-isaac-lab-environment
+    network_mode: "host"
+
+  # Base + WebRTC over LAN (no tailscale)
+  isaac-lab-webrtc-local:
+    profiles: ["webrtc-local"]
+    env_file:
+      - ../envs/.env.base
+      - ../envs/.env.webrtc
+    <<: *default-isaac-lab-base
+    labels:
+      com.crt.session_id: ${SESSION_ID}
+      com.crt.nickname: ${SESSION_NICKNAME:-}
+      com.crt.profile: webrtc-local
+      com.crt.gui: webrtc
+      com.crt.access: local
+    environment:
+      <<: [*default-isaac-lab-environment, *default-webrtc-environment]
+    network_mode: "host"
+    runtime: nvidia
+
+  # Base + WebRTC over Tailscale (remote)
+  isaac-lab-webrtc-remote:
+    profiles: ["webrtc-remote"]
+    env_file:
+      - ../envs/.env.base
+      - ../envs/.env.tailscale
+      - ../envs/.env.webrtc
+    <<: *default-isaac-lab-base
+    labels:
+      com.crt.session_id: ${SESSION_ID}
+      com.crt.nickname: ${SESSION_NICKNAME:-}
+      com.crt.profile: webrtc-remote
+      com.crt.gui: webrtc
+      com.crt.access: remote
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+    environment:
+      <<: [*default-isaac-lab-environment, *default-webrtc-environment]
+    runtime: nvidia
+
+  # ROS2 (no GUI)
+  isaac-lab-ros2:
+    profiles: ["ros2"]
+    env_file:
+      - ../envs/.env.base
+      - ../envs/.env.ros2
+    <<: *default-isaac-lab-ros2
+    environment:
+      <<: *default-isaac-lab-environment
+    network_mode: "host"
+
+  # ROS2 + WebRTC over LAN
+  isaac-lab-ros2-webrtc-local:
+    profiles: ["ros2-webrtc-local"]
+    env_file:
+      - ../envs/.env.base
+      - ../envs/.env.ros2
+      - ../envs/.env.webrtc
+    <<: *default-isaac-lab-ros2
+    labels:
+      com.crt.session_id: ${SESSION_ID}
+      com.crt.nickname: ${SESSION_NICKNAME:-}
+      com.crt.profile: ros2-webrtc-local
+      com.crt.gui: webrtc
+      com.crt.access: local
+    environment:
+      <<: [*default-isaac-lab-environment, *default-webrtc-environment]
+    network_mode: "host"
+    runtime: nvidia
+
+  # ROS2 + WebRTC over Tailscale (remote)
+  isaac-lab-ros2-webrtc-remote:
+    profiles: ["ros2-webrtc-remote"]
+    env_file:
+      - ../envs/.env.base
+      - ../envs/.env.ros2
+      - ../envs/.env.tailscale
+      - ../envs/.env.webrtc
+    <<: *default-isaac-lab-ros2
+    labels:
+      com.crt.session_id: ${SESSION_ID}
+      com.crt.nickname: ${SESSION_NICKNAME:-}
+      com.crt.profile: ros2-webrtc-remote
+      com.crt.gui: webrtc
+      com.crt.access: remote
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+    environment:
+      <<: [*default-isaac-lab-environment, *default-webrtc-environment]
+    runtime: nvidia
+
+volumes:
+  isaac-cache-kit:
+    name: isaac-cache-kit
+    external: true
+  isaac-cache-ov:
+    name: isaac-cache-ov
+    external: true
+  isaac-cache-pip:
+    name: isaac-cache-pip
+    external: true
+  isaac-cache-gl:
+    name: isaac-cache-gl
+    external: true
+  isaac-cache-compute:
+    name: isaac-cache-compute
+    external: true
+  isaac-cache-warp:
+    name: isaac-cache-warp
+    external: true
+  isaac-cache-exts:
+    name: isaac-cache-exts
+    external: true
+  isaaclab-terrain-cache:
+    name: isaaclab-terrain-cache
+    external: true
+
+  isaac-logs: {}
+  isaac-carb-logs: {}
+  isaac-data: {}
+  isaac-docs: {}
+  isaac-lab-docs: {}
+  isaac-lab-logs: {}
+  isaac-lab-data: {}
+
+networks:
+  default:
+    name: isaaclab-net
+    external: true

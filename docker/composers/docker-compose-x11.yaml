@@ -1,0 +1,41 @@
+# Overlay to enable X11 forwarding for interactive GUI inside the container.
+# This file is intended to be used together with the main compose via:
+#   docker compose -f docker/composers/docker-compose.yaml \
+#                  -f docker/composers/docker-compose-x11.yaml ... up
+# It assumes a host-side temporary xauth file path exported as __ISAACLAB_TMP_XAUTH
+# by src/gui/x11.py and DISPLAY is exported from the host environment.
+
+services:
+  isaac-lab-base:
+    environment:
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /tmp/.isaaclab-docker.xauth
+      QT_X11_NO_MITSHM: "1"
+    labels:
+      com.crt.gui: x11
+      com.crt.access: ${SESSION_ACCESS:-unknown}
+    volumes:
+      - type: bind
+        source: /tmp/.X11-unix
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ${__ISAACLAB_TMP_XAUTH}
+        target: /tmp/.isaaclab-docker.xauth
+        read_only: true
+
+  isaac-lab-ros2:
+    environment:
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /tmp/.isaaclab-docker.xauth
+      QT_X11_NO_MITSHM: "1"
+    labels:
+      com.crt.gui: x11
+      com.crt.access: ${SESSION_ACCESS:-unknown}
+    volumes:
+      - type: bind
+        source: /tmp/.X11-unix
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ${__ISAACLAB_TMP_XAUTH}
+        target: /tmp/.isaaclab-docker.xauth
+        read_only: true

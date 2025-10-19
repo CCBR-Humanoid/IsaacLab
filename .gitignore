@@ -25,7 +25,8 @@
 # Docker/Singularity
 **/*.sif
 docker/cluster/exports/
-docker/.container.cfg
+docker/envs/.env.tailscale
+.container.cfg
 
 # IDE
 **/.idea/
@@ -68,4 +69,4 @@ _build
 tests/
 
 # Docker history
-.isaac-lab-docker-history
+.isaac-lab/
