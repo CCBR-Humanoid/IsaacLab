@@ -156,6 +156,8 @@ services:
       com.crt.access: local
     environment:
       <<: [*default-isaac-lab-environment, *default-webrtc-environment]
+      # Use LAN/private signaling for local WebRTC
+      LIVESTREAM: "2"
     network_mode: "host"
     runtime: nvidia
 
@@ -208,6 +210,8 @@ services:
       com.crt.access: local
     environment:
       <<: [*default-isaac-lab-environment, *default-webrtc-environment]
+      # Use LAN/private signaling for local WebRTC
+      LIVESTREAM: "2"
     network_mode: "host"
     runtime: nvidia
 

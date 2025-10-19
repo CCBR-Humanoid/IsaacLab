@@ -435,7 +435,7 @@ def select_option(
     )
     result = selector.run()
     if result is None:
-        raise KeyboardInterrupt("Selection cancelled by user")
+        exit()
     return result
 
 

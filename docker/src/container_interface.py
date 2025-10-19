@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .gui.state_file import StateFile
-from .gui.x11 import x11_check, x11_refresh, x11_cleanup
+from .gui.interfaces import make_gui_handler, GUIInterface
 
 
 class ContainerInterface:
@@ -191,27 +191,30 @@ class ContainerInterface:
                 env=self.environ,
             )
 
-        # Optionally enable X11 overlay only if requested
+        # GUI overlays/env via handler
         add_args = list(self.add_yamls)
         local_env = self.environ.copy()
         # Ensure compose has interpolation variables even if --env-file is ignored by some paths
         if hasattr(self, "dot_vars") and isinstance(self.dot_vars, dict):
             local_env.update({k: str(v) for k, v in self.dot_vars.items()})
-        if local_env.get("SESSION_GUI") == "x11":
-            # Use a per-session namespace for X11 to avoid file reuse across sessions
-            self.statefile.namespace = f"X11-{local_env.get('SESSION_ID','default')}"
+        # Build GUI handler based on current env/profile
+        sid = local_env.get("SESSION_ID") or self.project_name or ""
+        access = local_env.get("SESSION_ACCESS")
+        gui_kind = (local_env.get("SESSION_GUI") or "none").lower()
+        kind = GUIInterface.X11 if gui_kind == "x11" else (GUIInterface.WEBRTC if gui_kind == "webrtc" else GUIInterface.NONE)
+        is_remote = self.profile.endswith("-remote") or (access == "remote")
+        self._gui_handler = make_gui_handler(kind, context_dir=self.context_dir, statefile=self.statefile, session_id=sid, access=access, is_remote=is_remote)
+        if self._gui_handler:
+            # Allow handler to modify overlays and env before up
             try:
-                x11_yaml_args, x11_envars = x11_check(self.statefile) or (None, None)
+                self._gui_handler.start()
             except Exception:
-                x11_yaml_args, x11_envars = (None, None)
-            if x11_envars:
-                # Adjust mount path variable name for this session and add overlay
-                add_args += ["--file", str(self.context_dir / "docker" / "composers" / "docker-compose-x11.yaml")]
-                local_env.update(x11_envars)
-
-        # If using remote WebRTC, include tailscale composer overlay
-        if self.profile in ("webrtc-remote", "ros2-webrtc-remote"):
-            add_args += ["--file", str(self.context_dir / "docker" / "composers" / "docker-compose-tailscale.yaml")]
+                pass
+            # Compose overlays from handler
+            for f in getattr(self._gui_handler, "extra_compose_files", []) or []:
+                add_args += ["--file", f]
+            # Environment from handler
+            local_env.update(getattr(self._gui_handler, "env_updates", {}) or {})
 
         # build the image for the profile
         # Compose up (no explicit --build, it will build missing images but reuse cache)
@@ -234,13 +237,19 @@ class ContainerInterface:
         """
         if self.is_container_running():
             print(f"[INFO] Entering the existing '{self.container_name}' container in a bash session...\n")
-            # refresh X11 cookie if this session was launched with X11
-            if self.environ.get("SESSION_GUI") == "x11":
-                self.statefile.namespace = f"X11-{self.environ.get('SESSION_ID','default')}"
-                try:
-                    x11_refresh(self.statefile)
-                except Exception:
-                    pass
+            # Prepare GUI-specific exec environment (e.g., X11 cookie refresh)
+            local_env = self.environ.copy()
+            sid = local_env.get("SESSION_ID") or self.project_name or ""
+            access = local_env.get("SESSION_ACCESS")
+            gui_kind = (local_env.get("SESSION_GUI") or "none").lower()
+            kind = GUIInterface.X11 if gui_kind == "x11" else (GUIInterface.WEBRTC if gui_kind == "webrtc" else GUIInterface.NONE)
+            is_remote = self.profile.endswith("-remote") or (access == "remote")
+            handler = make_gui_handler(kind, context_dir=self.context_dir, statefile=self.statefile, session_id=sid, access=access, is_remote=is_remote)
+            try:
+                if handler and hasattr(handler, "prepare_enter"):
+                    getattr(handler, "prepare_enter")()
+            except Exception:
+                pass
             # Build docker exec env pass-through
             exec_cmd = [
                 "docker",
@@ -248,11 +257,9 @@ class ContainerInterface:
                 "--interactive",
                 "--tty",
             ]
-            if "DISPLAY" in os.environ:
-                exec_cmd += ["-e", f"DISPLAY={os.environ['DISPLAY']}"]
-            # If X11, propagate the in-container XAUTHORITY path to align with the compose overlay mount
-            if self.environ.get("SESSION_GUI") == "x11":
-                exec_cmd += ["-e", "XAUTHORITY=/tmp/.isaaclab-docker.xauth"]
+            # Pass through any handler-specified exec envs (DISPLAY/XAUTHORITY for X11)
+            for k, v in (getattr(handler, "exec_env", {}) or {}).items():
+                exec_cmd += ["-e", f"{k}={v}"]
             exec_cmd += [f"{self.container_name}", "bash"]
             subprocess.run(exec_cmd)
         else:
@@ -268,11 +275,16 @@ class ContainerInterface:
             print(f"[INFO] Stopping the launched docker container '{self.container_name}'...\n")
             # Build compose args similar to start (for overlays), but do not filter by profile on down
             add_args = list(self.add_yamls)
-            # Include tailscale overlay if this session used remote WebRTC
-            prof = (self.profile or "")
-            if prof.endswith("-remote"):
-                add_args += ["--file", str(self.context_dir / "docker" / "composers" / "docker-compose-tailscale.yaml")]
+            # Use GUI handler to include any required down overlays (e.g., tailscale service)
             local_env = self.environ.copy()
+            sid = local_env.get("SESSION_ID") or self.project_name or ""
+            access = local_env.get("SESSION_ACCESS")
+            gui_kind = (local_env.get("SESSION_GUI") or "none").lower()
+            kind = GUIInterface.X11 if gui_kind == "x11" else (GUIInterface.WEBRTC if gui_kind == "webrtc" else GUIInterface.NONE)
+            is_remote = self.profile.endswith("-remote") or (access == "remote")
+            handler = make_gui_handler(kind, context_dir=self.context_dir, statefile=self.statefile, session_id=sid, access=access, is_remote=is_remote)
+            for f in (getattr(handler, "down_compose_files", []) or []):
+                add_args += ["--file", f]
             if hasattr(self, "dot_vars") and isinstance(self.dot_vars, dict):
                 local_env.update({k: str(v) for k, v in self.dot_vars.items()})
             subprocess.run(
@@ -292,23 +304,12 @@ class ContainerInterface:
                 result = subprocess.run(["docker", "ps", "-a", "--filter", f"name=^{ts_name}$", "--format", "{{.Names}}"], capture_output=True, text=True, check=False)
                 if ts_name in (result.stdout or ""):
                     subprocess.run(["docker", "rm", "-f", ts_name], check=False)
-            # Clean X11 artifacts if this session used X11
-            if self.environ.get("SESSION_GUI") == "x11":
-                self.statefile.namespace = f"X11-{self.environ.get('SESSION_ID','default')}"
-                try:
-                    x11_cleanup(self.statefile)
-                except Exception:
-                    pass
-                # Remove per-session section and any legacy global X11 section
-                try:
-                    ns = self.statefile.namespace
-                    if ns:
-                        self.statefile.delete_section(ns)
-                    self.statefile.delete_section("X11")
-                    # Persist the cleanup immediately
-                    self.statefile.save()
-                except Exception:
-                    pass
+            # GUI-specific cleanup (e.g., X11 cookie/state removal)
+            try:
+                if handler:
+                    handler.cleanup()
+            except Exception:
+                pass
 
             # Explicitly remove leftover non-persistent per-session volumes, if any.
             # These are created with the COMPOSE_PROJECT_NAME prefix, e.g.,
